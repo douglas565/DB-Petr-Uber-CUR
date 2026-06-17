@@ -70,3 +70,5 @@ Para que o `app.js` funcione corretamente, o banco de dados deve possuir:
 1. **Catálogo Mestre:** Acessível via `collectionGroup("modelos")`, onde os documentos estão aninhados sob "famílias" e contêm os campos `fluxo_luminoso_lm`, `eficiencia_lm_w`, `potencia_W`, etc.
 2. **Dados dos Contratos:** Coleção `contratos` com documentos nomeados de acordo com a seleção (`UDI`, `PNZ`, `CWB`), contendo subcoleções de avaliações separadas por "Marcos" ou "Ano/Mês", conforme mapeado na constante `CONFIG_CONTRATOS`.
 
+![Texto alternativo](image.png)
+

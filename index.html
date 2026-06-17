@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard IP - Curva de Depreciação Automática</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    
+    <script src="config.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-wrapper">
+    
+    <header class="app-header">
+        <div class="header-brand">
+            <div class="header-icon"><i class="ti ti-bulb-filled"></i></div>
+            <div>
+                <h1 class="header-title">Curva de Depreciação</h1>
+                <p class="header-subtitle">Descoberta e Validação Automática de Ensaios</p>
+            </div>
+        </div>
+        <div class="header-badge" id="connBadge">
+            <div class="dot"></div> <span id="connText">Conectando...</span>
+        </div>
+    </header>
+
+    <section class="card">
+        <div class="card-body">
+            <div class="controls-grid">
+                <div class="control-group">
+                    <label class="control-label"><i class="ti ti-map-pin"></i> Base Contratual</label>
+                    <select id="contratoSelect">
+                        <option value="UDI">UDI - Uberlândia</option>
+                        <option value="PNZ">PNZ - Petrolina</option>
+                        <option value="CWB">CWB - Curitiba</option>
+                    </select>
+                </div>
+                
+                <div class="control-group" style="justify-content: flex-end;">
+                    <button id="btnAnalisar" class="btn btn-primary" disabled>
+                        <i class="ti ti-radar"></i> Varrer Contrato
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div id="statusBanner" class="status-banner"></div>
+
+    <section id="masterSection" class="card" style="display: none;">
+        <div class="card-header">
+            <div class="card-title"><i class="ti ti-list-search"></i> Modelos Identificados no Laboratório</div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">Clique em um modelo abaixo para gerar o relatório fotométrico completo e a trilha de auditoria.</p>
+        </div>
+        <div class="card-body">
+            <div class="results-table-wrapper">
+                <table class="results-table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Família</th>
+                            <th>Modelo Identificado</th>
+                            <th class="num">Amostras</th>
+                            <th class="num">Fluxo Nominal</th>
+                            <th class="num">Manut. Atual (Fluxo)</th>
+                            <th>Status Geral</th>
+                        </tr>
+                    </thead>
+                    <tbody id="masterTableBody">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <div id="detailSection" style="display: none; flex-direction: column; gap: 24px;">
+        
+        <h2 class="section-title" id="lblModeloSelecionado">Modelo: ---</h2>
+        
+        <section class="metrics-grid">
+            <div class="metric-card" id="metFluxoNom">
+                <div class="metric-label"><i class="ti ti-sun"></i> Fluxo Nominal</div>
+                <div class="metric-value">—</div>
+                <div class="metric-sub">—</div>
+            </div>
+            <div class="metric-card" id="metEficNom">
+                <div class="metric-label"><i class="ti ti-bolt"></i> Efic. Nominal</div>
+                <div class="metric-value">—</div>
+                <div class="metric-sub">—</div>
+            </div>
+            <div class="metric-card" id="metFluxoUlt">
+                <div class="metric-label"><i class="ti ti-sun-off"></i> Manut. Fluxo</div>
+                <div class="metric-value">—</div>
+                <div class="metric-sub">—</div>
+            </div>
+            <div class="metric-card" id="metEficUlt">
+                <div class="metric-label"><i class="ti ti-trending-down"></i> Manut. Efic.</div>
+                <div class="metric-value">—</div>
+                <div class="metric-sub">—</div>
+            </div>
+        </section>
+
+        <section class="chart-section">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><i class="ti ti-chart-line"></i> Depreciação de Fluxo Luminoso</div>
+                </div>
+                <div class="card-body chart-wrapper">
+                    <canvas id="chartFluxo"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><i class="ti ti-chart-dots"></i> Depreciação de Eficiência</div>
+                </div>
+                <div class="card-body chart-wrapper">
+                    <canvas id="chartEfic"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-header">
+                <div class="card-title"><i class="ti ti-table"></i> Trilha de Auditoria (Medido vs. Declarado)</div>
+            </div>
+            <div class="card-body">
+                <div class="results-table-wrapper">
+                    </div>
+            </div>
+        </section>
+        
+    </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

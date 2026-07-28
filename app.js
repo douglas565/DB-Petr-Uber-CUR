@@ -13,11 +13,11 @@ const db = firebase.firestore();
 // ============================================
 let chartFluxo = null;
 let chartEfic  = null;
-let catalogoModelos = []; 
-let dadosAgrupadosContrato = {}; 
-let marcosAtuais = []; 
+let catalogoModelos = [];
+let dadosAgrupadosContrato = {};
+let marcosAtuais = [];
 
-// Configuração de rotas e adapter de leitura por contrato (Com múltiplos caminhos por segurança)
+
 const CONFIG_CONTRATOS = {
     "UDI": {
         tipo: "padrao",
@@ -53,7 +53,13 @@ const CORES = { medido: "#0F6E56", limite: "#E24B4A", eficiencia: "#BA7517" };
 function fmt(n, dec = 1) { return (n === null || isNaN(n)) ? "—" : Number(n).toFixed(dec); }
 function fmtPerc(n) { return n !== null && !isNaN(n) ? fmt(n) + "%" : "—"; }
 
-// Helper para colorir números negativos e positivos da NC
+// Divisão segura: retorna null se denominador inválido
+function safePerc(valor, base) {
+    if (base === null || isNaN(base) || base <= 0) return null;
+    if (valor === null || isNaN(valor)) return null;
+    return (valor / base) * 100;
+}
+
 function corDesvio(n, isNC = false) {
     if (n === null || isNaN(n)) return "";
     if (isNC) {
@@ -93,7 +99,6 @@ function setMetricCard(id, value, sub, deltaClass) {
     if (sub !== null) card.querySelector(".metric-sub").textContent = sub;
 }
 
-// Global toggle para a tabela de expansão
 window.toggleSubRow = function(subRowId) {
     const subRow = document.getElementById(subRowId);
     const icon = subRow.previousElementSibling.querySelector('.expand-icon');
@@ -121,7 +126,7 @@ async function carregarCatalogoMaster() {
                 });
             }
         });
-        
+
         document.getElementById("btnAnalisar").disabled = false;
         document.getElementById("connText").textContent = `Catálogo Sincronizado (${catalogoModelos.length} modelos)`;
     } catch (err) {
@@ -149,7 +154,7 @@ function encontrarModeloBase(labFab, labMod, labPotDeclarada) {
     for (const cat of catalogoModelos) {
         const baseFam = String(cat.data.familia || "").toUpperCase();
         const baseModId = String(cat.data.modelo || cat.data.modelo_base || cat.id).toUpperCase();
-        
+
         let basePot = null;
         if (cat.data.potencia_W) {
             basePot = parseFloat(String(cat.data.potencia_W).replace(',', '.').replace(/[^\d.]/g, ''));
@@ -170,7 +175,7 @@ function encontrarModeloBase(labFab, labMod, labPotDeclarada) {
 
         let pts = 0;
         if (labMod.includes(baseModId)) pts += 100;
-        
+
         const tokens = baseModId.split(/[\s\-_]+/);
         for (const tok of tokens) {
             if (tok.length > 2 && labMod.includes(tok)) pts += (tok.length * 2);
@@ -185,7 +190,8 @@ function encontrarModeloBase(labFab, labMod, labPotDeclarada) {
             melhorMatch = cat;
         }
     }
-    
+
+    // Volta ao comportamento original: aceita qualquer match com pontuação > 0.
     return melhorMatch;
 }
 
@@ -195,15 +201,15 @@ function encontrarModeloBase(labFab, labMod, labPotDeclarada) {
 async function analisarContrato() {
     const contratoId = document.getElementById("contratoSelect").value;
     const btn = document.getElementById("btnAnalisar");
-    
+
     btn.disabled = true;
     btn.innerHTML = `<div class="spinner"></div> Varrendo...`;
     showStatus("loading", "Analisando Laboratório...", `Lendo estrutura e cruzando dados do contrato ${contratoId}...`);
-    
+
     document.getElementById("masterSection").style.display = "none";
     document.getElementById("detailSection").style.display = "none";
-    
-    dadosAgrupadosContrato = {}; 
+
+    dadosAgrupadosContrato = {};
     const configAtual = CONFIG_CONTRATOS[contratoId];
     marcosAtuais = configAtual.marcos.map(m => m.label);
 
@@ -230,26 +236,27 @@ async function analisarContrato() {
 
                 let fab, mod, pot, fluxo, efic, identificador;
 
-                // Extração dos dados e identificador da amostra
                 if (configAtual.tipo === "cwb") {
                     fab = d["FABRICANTE"];
                     mod = d["MODELO"];
                     pot = d["POTENCIA DECLARADO (W)"] || d["POTENCIA (W)"];
                     fluxo = parseFloat(d["FLUXO LUMINOSO (LM)"]);
                     efic  = parseFloat(d["EFICACIA (LM/W)"]);
-                    identificador = d["RELATORIO"] || doc.id; // Tenta pegar o número do relatório
+                    identificador = d["RELATORIO"] || doc.id;
                 } else {
                     fab = d.metadata?.fabricante;
                     mod = d.metadata?.modelo || d.metadata?.arquivo;
-                    pot = null; 
+                    pot = null;
                     fluxo = parseFloat(d.dados_tecnicos?.fluxoLuminosoLuminaria);
                     efic  = parseFloat(d.dados_tecnicos?.eficienciaLuminosaTotal);
-                    identificador = d.metadata?.arquivo || doc.id; // Tenta pegar o nome do arquivo
+                    identificador = d.metadata?.arquivo || doc.id;
                 }
 
                 const modeloBase = encontrarModeloBase(fab, mod, pot);
+                const fluxoValido = !isNaN(fluxo) && fluxo > 0;
+                const eficValida  = !isNaN(efic) && efic > 0;
 
-                if (modeloBase && !isNaN(fluxo) && fluxo > 0) {
+                if (modeloBase && fluxoValido) {
                     totalAmostrasEncontradas++;
                     const modId = modeloBase.id;
 
@@ -258,19 +265,29 @@ async function analisarContrato() {
                     }
 
                     if (!dadosAgrupadosContrato[modId].marcos[marco.label]) {
-                        // ADICIONADO: Array 'amostras' para guardar a lista individual de relatórios
-                        dadosAgrupadosContrato[modId].marcos[marco.label] = { somaFluxo: 0, somaEfic: 0, qtd: 0, amostras: [] };
+                        dadosAgrupadosContrato[modId].marcos[marco.label] = {
+                            somaFluxo: 0,
+                            somaEfic: 0,
+                            qtd: 0,        // quantidade válida de fluxo
+                            qtdEfic: 0,    // quantidade válida de eficácia (contador independente)
+                            amostras: []
+                        };
                     }
 
-                    dadosAgrupadosContrato[modId].marcos[marco.label].somaFluxo += fluxo;
-                    dadosAgrupadosContrato[modId].marcos[marco.label].somaEfic += efic;
-                    dadosAgrupadosContrato[modId].marcos[marco.label].qtd++;
-                    
-                    // Salva a amostra individual
-                    dadosAgrupadosContrato[modId].marcos[marco.label].amostras.push({
+                    const ref = dadosAgrupadosContrato[modId].marcos[marco.label];
+                    ref.somaFluxo += fluxo;
+                    ref.qtd++;
+
+                    // Só soma eficácia se for válida — evita contaminar a média com NaN
+                    if (eficValida) {
+                        ref.somaEfic += efic;
+                        ref.qtdEfic++;
+                    }
+
+                    ref.amostras.push({
                         id: identificador,
                         fluxo: fluxo,
-                        efic: efic
+                        efic: eficValida ? efic : NaN
                     });
 
                 } else {
@@ -315,8 +332,8 @@ function renderMasterTable() {
             }
         });
 
-        const mFluxo = ultimoMarcoData ? (ultimoMarcoData.somaFluxo / ultimoMarcoData.qtd) : 0;
-        const percManut = fluxoNominal > 0 && mFluxo > 0 ? (mFluxo / fluxoNominal) * 100 : null;
+        const mFluxo = (ultimoMarcoData && ultimoMarcoData.qtd > 0) ? (ultimoMarcoData.somaFluxo / ultimoMarcoData.qtd) : 0;
+        const percManut = safePerc(mFluxo, fluxoNominal);
 
         const tr = document.createElement("tr");
         tr.onclick = () => renderDetailView(modelo.id, tr);
@@ -347,8 +364,17 @@ function renderDetailView(modeloId, trElement) {
     const fluxoNominal = parseFloat(modelo.nominal.fluxo_luminoso_lm);
     const eficNominal  = parseFloat(modelo.nominal.eficiencia_lm_w);
 
+    // Guard: se os valores nominais forem inválidos, avisa e interrompe
+    const fluxoNominalValido = !isNaN(fluxoNominal) && fluxoNominal > 0;
+    const eficNominalValido  = !isNaN(eficNominal) && eficNominal > 0;
+
+    if (!fluxoNominalValido) {
+        showStatus("warning", "Nominal ausente", `O modelo ${modeloId} não possui fluxo nominal válido no catálogo. Não é possível calcular a curva de depreciação.`);
+        return;
+    }
+
     const mediasFluxo = [100];
-    const mediasEfic  = [100];
+    const mediasEfic  = [eficNominalValido ? 100 : null];
     const linhasTabela = [];
 
     let ultimoPercentualFluxo = null;
@@ -357,15 +383,16 @@ function renderDetailView(modeloId, trElement) {
 
     marcosAtuais.forEach(marco => {
         const dadosMarco = modelo.marcos[marco];
-        if (dadosMarco) {
+        if (dadosMarco && dadosMarco.qtd > 0) {
             const mFluxo = dadosMarco.somaFluxo / dadosMarco.qtd;
-            const mEfic  = dadosMarco.somaEfic / dadosMarco.qtd;
-            
-            const percFluxo = (mFluxo / fluxoNominal) * 100;
-            const percEfic  = (mEfic / eficNominal) * 100;
-            const desvioAbsolutoLm = mFluxo - fluxoNominal; 
-            const ncFluxoPerc = (1 - (mFluxo / fluxoNominal)) * 100; 
-            const ncEficPerc  = (1 - (mEfic / eficNominal)) * 100;
+            // Usa o contador independente de eficácia; se não houver amostra válida, fica NaN
+            const mEfic  = dadosMarco.qtdEfic > 0 ? (dadosMarco.somaEfic / dadosMarco.qtdEfic) : NaN;
+
+            const percFluxo = safePerc(mFluxo, fluxoNominal);
+            const percEfic  = eficNominalValido ? safePerc(mEfic, eficNominal) : null;
+            const desvioAbsolutoLm = mFluxo - fluxoNominal;
+            const ncFluxoPerc = percFluxo !== null ? (100 - percFluxo) : null;
+            const ncEficPerc  = percEfic !== null ? (100 - percEfic) : null;
 
             mediasFluxo.push(percFluxo);
             mediasEfic.push(percEfic);
@@ -373,7 +400,7 @@ function renderDetailView(modeloId, trElement) {
             ultimoPercentualEfic = percEfic;
             ultimoMarcoStr = marco;
 
-            linhasTabela.push({ 
+            linhasTabela.push({
                 marco, qtd: dadosMarco.qtd, mFluxo, percFluxo, desvioAbsolutoLm, ncFluxoPerc,
                 mEfic, percEfic, ncEficPerc, amostras: dadosMarco.amostras
             });
@@ -384,13 +411,17 @@ function renderDetailView(modeloId, trElement) {
     });
 
     setMetricCard("metFluxoNom", `${fluxoNominal.toLocaleString("pt-BR")} lm`, "Nominal catálogo", "");
-    setMetricCard("metEficNom", `${fmt(eficNominal)} lm/W`, "Nominal catálogo", "");
-    
+    setMetricCard("metEficNom", eficNominalValido ? `${fmt(eficNominal)} lm/W` : "—", "Nominal catálogo", "");
+
     if (ultimoPercentualFluxo !== null) {
         setMetricCard("metFluxoUlt", fmtPerc(ultimoPercentualFluxo), `Ref: ${ultimoMarcoStr}`, ultimoPercentualFluxo >= 95 ? "positive" : ultimoPercentualFluxo >= 90 ? "warning" : "negative");
-        setMetricCard("metEficUlt", fmtPerc(ultimoPercentualEfic), `Ref: ${ultimoMarcoStr}`, ultimoPercentualEfic >= 95 ? "positive" : ultimoPercentualEfic >= 90 ? "warning" : "negative");
     } else {
         setMetricCard("metFluxoUlt", "—", "Sem dados", "");
+    }
+
+    if (ultimoPercentualEfic !== null) {
+        setMetricCard("metEficUlt", fmtPerc(ultimoPercentualEfic), `Ref: ${ultimoMarcoStr}`, ultimoPercentualEfic >= 95 ? "positive" : ultimoPercentualEfic >= 90 ? "warning" : "negative");
+    } else {
         setMetricCard("metEficUlt", "—", "Sem dados", "");
     }
 
@@ -420,8 +451,8 @@ function renderDetailView(modeloId, trElement) {
                     <td class="num" style="color: var(--text-muted)">0</td>
                     <td class="num">100,0%</td>
                     <td class="num" style="color: var(--text-muted)">0,0%</td>
-                    <td class="num">${fmt(eficNominal)}</td>
-                    <td class="num" style="color: var(--text-muted)">0,0%</td>
+                    <td class="num">${eficNominalValido ? fmt(eficNominal) : "—"}</td>
+                    <td class="num" style="color: var(--text-muted)">${eficNominalValido ? "0,0%" : "—"}</td>
                     <td><span class="pill ok">Referência</span></td>
                 </tr>
             </tbody>
@@ -434,7 +465,6 @@ function renderDetailView(modeloId, trElement) {
         const hasAmostras = r.amostras && r.amostras.length > 1;
         const subRowId = `subrow-${idx}`;
 
-        // Linha Principal (Média)
         tbody.innerHTML += `
             <tr ${hasAmostras ? `class="expandable-row" onclick="toggleSubRow('${subRowId}')" title="Clique para ver luminárias individuais"` : ''}>
                 <td>
@@ -451,13 +481,13 @@ function renderDetailView(modeloId, trElement) {
                 <td><span class="pill ${pillClass(r.percFluxo)}">${pillLabel(r.percFluxo)}</span></td>
             </tr>`;
 
-        // Sub-tabela com as amostras (Escondida por padrão)
         if (hasAmostras) {
             let subRowsHTML = r.amostras.map(a => {
-                const aDesvioLm = a.fluxo - fluxoNominal;
-                const aNcFluxo = (1 - (a.fluxo / fluxoNominal)) * 100;
-                const aNcEfic = (1 - (a.efic / eficNominal)) * 100;
-                const aPercFluxo = (a.fluxo / fluxoNominal) * 100;
+                const aDesvioLm  = a.fluxo - fluxoNominal;
+                const aPercFluxo = safePerc(a.fluxo, fluxoNominal);
+                const aNcFluxo   = aPercFluxo !== null ? (100 - aPercFluxo) : null;
+                const aPercEfic  = eficNominalValido ? safePerc(a.efic, eficNominal) : null;
+                const aNcEfic    = aPercEfic !== null ? (100 - aPercEfic) : null;
 
                 return `
                     <tr class="sub-item-row">
@@ -496,9 +526,9 @@ function renderDetailView(modeloId, trElement) {
 // RENDERIZAÇÃO DE GRÁFICOS
 // ============================================
 function renderCharts(mediasFluxo, mediasEfic) {
-    const labels = ["Nominal", ...marcosAtuais]; 
-    
-    const baseOpts = { 
+    const labels = ["Nominal", ...marcosAtuais];
+
+    const baseOpts = {
         responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
         scales: {
             x: { ticks: { font: { size: 12 } }, grid: { color: "#F1F5F9" } },

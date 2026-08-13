@@ -312,11 +312,21 @@ function extrairAssinatura(modStr, potDeclarada) {
   let base = null;
   const candidatos = [...bruto.matchAll(/\b([A-Z]{2,5})\s*-?\s*(\d{2,4})[A-Z]?\b/g)]
     .filter(m => !NAO_BASE.has(m[1]));
+    
   if (candidatos.length) {
     base = candidatos[0][1] + candidatos[0][2];
   } else {
     const alt = compact.match(/^[A-Z]{2,5}\d{2,4}/);
-    if (alt && !NAO_BASE.has(alt[0].replace(/\d+/g, ""))) base = alt[0];
+    if (alt && !NAO_BASE.has(alt[0].replace(/\d+/g, ""))) {
+      base = alt[0];
+    } else {
+      // NOVO FALLBACK: Se não achar o formato estrito (ex: BRP220), 
+      // usa a primeira palavra/token válida (ex: ESAT, LUMEFLEX, ORNAMENTAL, LPNENAI3)
+      const primeiraPalavra = bruto.split(/[\s-]/)[0].replace(/[^A-Z0-9]/g, "");
+      if (primeiraPalavra.length >= 3 && !NAO_BASE.has(primeiraPalavra)) {
+        base = primeiraPalavra;
+      }
+    }
   }
 
   // --- Código LED (LED45-5S, LED73, LED 189-6S) ---
@@ -516,11 +526,12 @@ async function carregarCatalogoMaster() {
 
       const cat = {
         id: doc.id,
-        familiaId: doc.ref.parent.parent.id,
+        // Usa o campo 'familia' do documento, ou tenta o avô como último recurso
+        familiaId: data.familia || (doc.ref.parent.parent ? doc.ref.parent.parent.id : "Sem Familia"),
         data,
         label: modeloStr,
         sig,
-        _famUpper: String(data.familia || doc.ref.parent.parent.id || "").toUpperCase()
+        _famUpper: String(data.familia || (doc.ref.parent.parent ? doc.ref.parent.parent.id : "")).toUpperCase()
       };
 
       catalogoModelos.push(cat);
